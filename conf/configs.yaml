@@ -3,3 +3,6 @@ defaults:
   - trainer: train
   - model: default
   - dataset: lrs2
+log_dir:
+ckpt_path:
+pretrained_model_path:

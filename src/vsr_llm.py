@@ -16,55 +16,76 @@ from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from utils import make_non_pad_mask
 from transformers import GemmaForCausalLM,GemmaTokenizer,BitsAndBytesConfig
 from peft import LoraConfig,get_peft_model,prepare_model_for_kbit_training
-def add_eos(batch):
-    res = []
-    for t in batch:
-        t = t + "<eos>"
-        res.append(t)
-    return res
-def build_model(cfg):
 
-    """
-    build the model
-    """
-    cfg=cfg.model
-    # quantization or not
-    # a little tips: the bnb_4bit_compute_dtype set torch.bfloat16 the output will imporve obviously
-    if cfg.decoder.quantization:
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.float32,
-        )
-        tokenizer = GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
-        model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it",quantization_config=bnb_config)
-        model.gradient_checkpointing_enable()
-        model=prepare_model_for_kbit_training(model)
-    else:
-        tokenizer =GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
-        model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it")
-    if cfg.decoder.Lora:
-        # the lora config
-        config = LoraConfig(
-                r=cfg.decoder.lora_r,
-                lora_alpha=cfg.decoder.lora_alpha,
-                target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-                lora_dropout=cfg.decoder.lora_dropout,
-                bias=cfg.decoder.lora_bias,
-                task_type=cfg.decoder.lora_task_type,
+class ModelModule():
+    def __init__(self, cfg, device):
+        self.cfg = cfg
+
+    def _step(self,batch,batch_idx,mode):
+        if mode == "train":
+            outputs = self.model(batch["video"],batch["target"],batch["input_lengths"])
+            return outputs.loss
+        if mode == "test":
+            outputs = self.model.generate(batch["video"],batch["input_lengths"])   
+            return outputs   
+        if mode == "val":
+            outputs = self.model(batch["video"],batch["target"],batch["input_lengths"])
+            return outputs
+
+    def training_step(self,batch,batch_idx):
+        return self._step(batch,batch_idx,"train")
+
+    def test_step(self,batch,batch_idx):
+        return self._step(batch,batch_idx,"test")
+
+    def val_step(self,batch,batch_idx):
+        return self._step(batch,batch_idx,"val")
+    
+    def build_model(self,cfg):
+
+        """
+        build the model
+        """
+        cfg=cfg.model
+        # quantization or not
+        # a little tips: the bnb_4bit_compute_dtype set torch.bfloat16 the output will imporve obviously
+        if cfg.decoder.quantization:
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=torch.float32,
             )
-        model=get_peft_model(
-            model,
-            peft_config=config,
-        )
-        # print the trainable parameters
-        model.print_trainable_parameters()
-        model=model.model
-    else:
-        for name, param in model.named_parameters():
-            param.requires_grad = False
-    return VSR_LLM(tokenizer,model,cfg)
+            tokenizer = GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
+            model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it",quantization_config=bnb_config)
+            model.gradient_checkpointing_enable()
+            model=prepare_model_for_kbit_training(model)
+        else:
+            tokenizer =GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
+            model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it")
+        if cfg.decoder.Lora:
+            # the lora config
+            config = LoraConfig(
+                    r=cfg.decoder.lora_r,
+                    lora_alpha=cfg.decoder.lora_alpha,
+                    target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+                    lora_dropout=cfg.decoder.lora_dropout,
+                    bias=cfg.decoder.lora_bias,
+                    task_type=cfg.decoder.lora_task_type,
+                )
+            model=get_peft_model(
+                model,
+                peft_config=config,
+            )
+            # print the trainable parameters
+            model.print_trainable_parameters()
+            model=model.model
+        else:
+            for name, param in model.named_parameters():
+                param.requires_grad = False
+        self.model=VSR_LLM(tokenizer,model,cfg)
+        self.tokenizer=tokenizer
+        return self.model
 
 
 class VSR_LLM(nn.Module):
@@ -127,7 +148,13 @@ class VSR_LLM(nn.Module):
         # embed the special tokens
         self.bos_embed_token=self.model.model.embed_tokens(torch.tensor(self.eos_token_id).to(self.model.device))
         self.eos_embed_token=self.model.model.embed_tokens(torch.tensor(self.eos_token_id).to(self.model.device))
-
+    
+    def add_eos(batch):
+        res = []
+        for t in batch:
+            t = t + "<eos>"
+            res.append(t)
+        return res
         
     def get_the_input_embeds(self,batch,input_lengths,targetBatch:Optional[torch.Tensor]=None):
 
@@ -168,10 +195,7 @@ class VSR_LLM(nn.Module):
                 inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i]],dim=0))
             inputs_embeds = pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
             return inputs_embeds
-                
-
-
-        
+                    
 
     def forward(self, inputBatch,targetBatch,input_lengths):
 

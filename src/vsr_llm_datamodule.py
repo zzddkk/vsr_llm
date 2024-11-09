@@ -19,32 +19,32 @@ class DataModule():
         # self.cfg.gpus = torch.cuda.device_count()
         # self.total_gpus = self.cfg.gpus * self.cfg.trainer.num_nodes
 
-    def _dataloader(self, ds, collate_fn):
+    def _dataloader(self, ds, collate_fn,batch_size):
         return torch.utils.data.DataLoader(
             ds,
             num_workers=12,
             pin_memory=True,
-            batch_size=4,
+            batch_size=batch_size,
             collate_fn=collate_fn,
         )
 
-    def train_dataloader(self):
+    def train_dataloader(self,batch_size):
         ds_args = self.cfg.dataset
         train_ds = video_dataset(
             root_dir=ds_args.root_dir,
             subset="train",
             video_transform=VideoTransform("train"),
         )
-        return self._dataloader(train_ds, collater)
+        return self._dataloader(train_ds, collater,batch_size)
 
-    def val_dataloader(self):
+    def val_dataloader(self,batch_size):
         ds_args = self.cfg.dataset
         val_ds = video_dataset(
             root_dir=ds_args.root_dir,
             subset="val",
             video_transform=VideoTransform("val"),
         )
-        return self._dataloader(val_ds, collater)
+        return self._dataloader(val_ds, collater,batch_size)
 
     def test_dataloader(self):
         ds_args = self.cfg.dataset
@@ -53,7 +53,7 @@ class DataModule():
             subset="test",
             video_transform=VideoTransform("test"),
         )
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=None)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
         return dataloader
 
 @hydra.main(config_path="conf", config_name="configs")

@@ -1,5 +1,7 @@
 import torch
-
+import sys
+import time
+import os
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -214,3 +216,30 @@ def make_non_pad_mask(lengths, xs=None, length_dim=-1):
 
     """
     return ~make_pad_mask(lengths, xs, length_dim)
+
+
+class Logger():
+    def __init__(self, log_file):
+        time_dir = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        tensorboard_dir = os.path.join(log_file, time_dir,"tensorboard")
+        os.makedirs(tensorboard_dir,exist_ok=True)
+        txt_dir = os.path.join(log_file, time_dir)
+        os.makedirs(txt_dir,exist_ok=True)
+        self.terminal = sys.stdout
+        self.log = open(os.path.join(txt_dir,"log.txt"), "a")
+        self.tensorboard = SummaryWriter(log_file)
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log.write(message)
+
+    def add_scalar(self, tag, scalar_value, global_step=None, walltime=None):
+        self.tensorboard.add_scalar(tag, scalar_value, global_step, walltime)
+
+    def flush(self):
+        self.terminal.flush()
+        self.log.flush()
+
+    def close(self):
+        self.log.close()
+        self.tensorboard.close()
