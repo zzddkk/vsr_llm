@@ -2,6 +2,9 @@ import torch
 import sys
 import time
 import os
+import math
+from torch.optim.lr_scheduler import LambdaLR
+from torch.utils.tensorboard import SummaryWriter
 def set_seed(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
@@ -227,7 +230,7 @@ class Logger():
         os.makedirs(txt_dir,exist_ok=True)
         self.terminal = sys.stdout
         self.log = open(os.path.join(txt_dir,"log.txt"), "a")
-        self.tensorboard = SummaryWriter(log_file)
+        self.tensorboard = SummaryWriter(tensorboard_dir)
 
     def write(self, message):
         self.terminal.write(message)
@@ -243,3 +246,16 @@ class Logger():
     def close(self):
         self.log.close()
         self.tensorboard.close()
+
+def get_cosine_schedule_with_warmup(optimizer,cfg,num_training_steps:int):
+    """
+    the funciton create the cosine schedule with warmup will return the cosine schedule with warmup
+    """
+    num_warmup_steps = int(num_training_steps * 0.05)
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step)/float(num_warmup_steps)
+        else:
+            progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+            return 0.5 * (1.0 + math.cos(math.pi * float(0.5) * 2.0 * progress))
+    return LambdaLR(optimizer, lr_lambda, -1)

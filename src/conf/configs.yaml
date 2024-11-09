@@ -1,5 +1,0 @@
-defaults:
-  - _self_
-  - trainer: train
-  - model: default
-  - dataset: lrs2

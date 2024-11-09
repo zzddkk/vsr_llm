@@ -56,7 +56,8 @@ class DataModule():
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
         return dataloader
 
-@hydra.main(config_path="conf", config_name="configs")
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+@hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
 def test(cfg):
     from transform import VideoTransform
     datamodel = DataModule(cfg)

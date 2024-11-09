@@ -18,10 +18,10 @@ from transformers import GemmaForCausalLM,GemmaTokenizer,BitsAndBytesConfig
 from peft import LoraConfig,get_peft_model,prepare_model_for_kbit_training
 
 class ModelModule():
-    def __init__(self, cfg, device):
+    def __init__(self, cfg):
         self.cfg = cfg
 
-    def _step(self,batch,batch_idx,mode):
+    def _step(self,batch,mode):
         if mode == "train":
             outputs = self.model(batch["video"],batch["target"],batch["input_lengths"])
             return outputs.loss
@@ -32,14 +32,14 @@ class ModelModule():
             outputs = self.model(batch["video"],batch["target"],batch["input_lengths"])
             return outputs
 
-    def training_step(self,batch,batch_idx):
-        return self._step(batch,batch_idx,"train")
+    def training_step(self,batch):
+        return self._step(batch,"train")
 
-    def test_step(self,batch,batch_idx):
-        return self._step(batch,batch_idx,"test")
+    def test_step(self,batch):
+        return self._step(batch,"test")
 
-    def val_step(self,batch,batch_idx):
-        return self._step(batch,batch_idx,"val")
+    def val_step(self,batch):
+        return self._step(batch,"val")
     
     def build_model(self,cfg):
 
@@ -149,7 +149,7 @@ class VSR_LLM(nn.Module):
         self.bos_embed_token=self.model.model.embed_tokens(torch.tensor(self.eos_token_id).to(self.model.device))
         self.eos_embed_token=self.model.model.embed_tokens(torch.tensor(self.eos_token_id).to(self.model.device))
     
-    def add_eos(batch):
+    def add_eos(self,batch):
         res = []
         for t in batch:
             t = t + "<eos>"
@@ -170,7 +170,7 @@ class VSR_LLM(nn.Module):
         prompt_embed_tokens = self.prompt_embed_token.repeat(B,1,1)
         str_embed_tokens = self.str_embed_tokens.repeat(B,1,1)
         if targetBatch:
-            transcripts = add_eos(targetBatch)
+            transcripts = self.add_eos(targetBatch)
             inputs_embeds = []
             to_regress_tokens = self.tokenizer(transcripts,return_tensors="pt",add_special_tokens=False,padding=True).to(self.model.device)
             # the transcript txt + <eos>
@@ -247,14 +247,16 @@ class VSR_LLM(nn.Module):
         )
         return outputs
 
-@hydra.main(config_path="conf", config_name="configs")
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+@hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
 def test(cfg):
-    model = build_model(cfg)
+    modelmodule = ModelModule(cfg)
+    model = modelmodule.build_model(cfg)
     model = model.to("cuda")
     from transform import VideoTransform
     from vsr_llm_datamodule import DataModule
     datamodel = DataModule(cfg)
-    val_dataloader = datamodel.val_dataloader()
+    val_dataloader = datamodel.val_dataloader(batch_size=1)
     for batch in val_dataloader:
         inputBatch=batch["video"]
         targetBatch=batch["target"]
@@ -262,12 +264,11 @@ def test(cfg):
         inputBatch = inputBatch.to("cuda")
         input_lengths = input_lengths.to("cuda")
         outputs = model(inputBatch,targetBatch,input_lengths)
-        print(outputs)
+        for k in outputs.keys():
+            print(k)
         break
     # for n,p in model.named_parameters():
     #     print(n,p.requires_grad)
     # print(model)
-    # model = VSR_LLM(cfg)
-    # model = model.to("cuda")
 if __name__ == "__main__":
     test()
