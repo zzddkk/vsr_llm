@@ -17,7 +17,7 @@ class Trainer:
         self.logger = logger
 
 
-    @find_executable_batch_size(starting_batch_size=128)
+    @find_executable_batch_size(starting_batch_size=16)
     def train(batch_size,self):
         self.train_dataloader = self.datamodule.train_dataloader(batch_size)
         self.val_dataloader = self.datamodule.val_dataloader(batch_size)
@@ -33,7 +33,7 @@ class Trainer:
         for batch in pbar:
             with self.accelerator.accumulate():
                 loss = self.modelmodule.training_step(batch)
-                print(loss.item())
+                self.logger.add_scalar("loss/train",loss.item())
                 self.accelerator.backward(loss)
                 self.optimizer.step()
                 self.scheduler.step()
@@ -43,7 +43,8 @@ class Trainer:
         self.model.eval()
         pbar = tqdm(self.val_dataloader, desc="Validation", position=0, leave=True)
         for batch in pbar:
-            loss = self.modelmodule.validation_step(batch)
+            loss = self.modelmodule.val_dataloader(batch)
+            self.logger.add_scalar("loss/val",loss.item())
             pbar.set_postfix({"loss":loss.item()})
     def _inner_test_loop(self):
         self.test_dataloader = self.datamodule.test_dataloader()
