@@ -22,7 +22,7 @@ class DataModule():
     def _dataloader(self, ds, collate_fn,batch_size):
         return torch.utils.data.DataLoader(
             ds,
-            num_workers=12,
+            num_workers=8,
             pin_memory=True,
             batch_size=batch_size,
             collate_fn=collate_fn,

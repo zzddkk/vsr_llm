@@ -8,7 +8,7 @@ class Trainer:
     def __init__(self, cfg ,modelmodule,datamodule,device,logger,accelerator):
         self.cfg = cfg
         self.modelmodule = modelmodule
-        self.model = self.modelmodule.build_model(cfg)
+        self.model = self.modelmodule.build_model(cfg,device)
         self.optimizer = torch.optim.AdamW([{"name": "model", "params": self.model.parameters(), "lr": self.cfg.trainer.lr}], weight_decay=self.cfg.trainer.weight_decay, betas=(0.9, 0.98))
         self.device = device
         self.datamodule = datamodule
@@ -17,7 +17,7 @@ class Trainer:
         self.logger = logger
 
     # This decorator will find the maximum batch size that can be used for training
-    @find_executable_batch_size(starting_batch_size=4)
+    @find_executable_batch_size(starting_batch_size=2)
     def train(batch_size,self):
         self.train_dataloader = self.datamodule.train_dataloader(batch_size)
         # Train batch size:
@@ -60,7 +60,7 @@ class Trainer:
                 loss = self.modelmodule.training_step(batch)
                 if step % self.cfg.trainer.gradient_accumulation_steps == 0:
                     self.logger.add_scalar("loss/train",loss.item())
-                self.accelerator.backward(loss)
+                self.accelerator.backward(loss,retain_graph= True)
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_value_(self.model.parameters(), self.cfg.trainer.clip_value)
                 self.optimizer.step()

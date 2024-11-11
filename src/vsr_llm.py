@@ -41,7 +41,7 @@ class ModelModule():
     def val_step(self,batch):
         return self._step(batch,"val")
     
-    def build_model(self,cfg):
+    def build_model(self,cfg,device):
 
         """
         build the model
@@ -88,8 +88,22 @@ class ModelModule():
             self.tokenizer=tokenizer
             return self.model
         else:
-            model = OPTForCausalLM.from_pretrained("facebook/opt-350m", torch_dtype=torch.float16, attn_implementation="flash_attention_2")
-            tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m")
+            if cfg.decoder.quantization:
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                )
+                model = OPTForCausalLM.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir,quantization_config=bnb_config)
+                tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir)
+                model.gradient_checkpointing_enable()
+                model=prepare_model_for_kbit_training(model)
+            else:
+                model = OPTForCausalLM.from_pretrained("facebook/opt-350m", cache_dir=cfg.decoder.cache_dir).to(device)
+                tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir)
+            for name, param in model.named_parameters():
+                param.requires_grad = False
             self.model=VSR_LLM(tokenizer,model,cfg)
             self.tokenizer=tokenizer
             return self.model
@@ -147,8 +161,8 @@ class VSR_LLM(nn.Module):
         self.prompt_embed_token = self.embedding(prompt_token.input_ids).to(self.model.device)
         self.str_embed_tokens = self.embedding(str_model_token.input_ids).to(self.model.device)
         # embed the special tokens
-        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device))
-        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device))
+        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device)).to(self.model.device)
+        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device)).to(self.model.device)
     
     def add_eos(self,batch):
         res = []
@@ -162,6 +176,7 @@ class VSR_LLM(nn.Module):
         for t in batch:
             t = t + "</s>"
             res.append(t)
+        return res
         
     def get_the_input_embeds(self,batch,input_lengths,targetBatch:Optional[torch.Tensor]=None):
 
@@ -190,9 +205,9 @@ class VSR_LLM(nn.Module):
             target_length = transcript_mask.sum(-1)
             # the input_embeds
             for i in range(B):
-                video = batch[i][:input_lengths[i]]
+                video = batch[i][:input_lengths[i]].to(self.model.device)
                 transcript = to_regress_embed_tokens[i][:target_length[i]]
-                inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i],to_regress_embed_tokens[i]],dim=0))
+                inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i],transcript],dim=0))
             inputs_embeds = pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
             target_ids = torch.zeros(inputs_embeds.shape[0],inputs_embeds.shape[1],dtype=torch.long).fill_(-100)
             transcript_ids = to_regress_tokens.input_ids
