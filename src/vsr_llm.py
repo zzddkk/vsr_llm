@@ -58,8 +58,9 @@ class ModelModule():
             )
             tokenizer = GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
             model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it",quantization_config=bnb_config)
-            model.gradient_checkpointing_enable()
-            model=prepare_model_for_kbit_training(model)
+            # model.gradient_checkpointing_enable()
+            # if fsdp not use prepare_model_for_kbit_training(ValueError: Must flatten tensors with uniform dtype but got torch.float32 and torch.uint8) else ddp need
+            # model=prepare_model_for_kbit_training(model)
         else:
             tokenizer =GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
             model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it")
@@ -99,6 +100,7 @@ class VSR_LLM(nn.Module):
     Input: 511.1-dim feature vector corresponding to each video frame giving 25 vectors per second.
     Output: Log probabilities over the character set at each time step.
     """
+    _tied_weights_keys = ["model.lm_head.weight"]
     def __init__(self,tokenizer,model,cfg):
         super(VSR_LLM, self).__init__()
         self.cfg=cfg

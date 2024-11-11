@@ -19,7 +19,6 @@ def train(cfg) -> None:
     set_seed(1337)
     # Initialize accelerator
 
-
     project_config = ProjectConfiguration(automatic_checkpoint_naming=True,total_limit=cfg.trainer.total_limit,save_on_each_node=False,project_dir=cfg.ckpt_path)
     accelerator = Accelerator(gradient_accumulation_steps = cfg.trainer.gradient_accumulation_steps,project_config=project_config,mixed_precision=cfg.trainer.mixed_precision)
     datamodule = DataModule(cfg)
