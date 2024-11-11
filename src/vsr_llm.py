@@ -14,7 +14,7 @@ from torch.nn.utils.rnn import pad_sequence
 # # login()
 from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from utils import make_non_pad_mask
-from transformers import GemmaForCausalLM,GemmaTokenizer,BitsAndBytesConfig
+from transformers import GemmaForCausalLM,GemmaTokenizer,BitsAndBytesConfig,OPTForCausalLM, GPT2Tokenizer
 from peft import LoraConfig,get_peft_model,prepare_model_for_kbit_training
 
 class ModelModule():
@@ -49,43 +49,50 @@ class ModelModule():
         cfg=cfg.model
         # quantization or not
         # the bnb_4bit_compute_dtype set torch.bfloat16/troch.float32 the output will imporve obviously
-        if cfg.decoder.quantization:
-            bnb_config = BitsAndBytesConfig(
-                load_in_4bit=True,
-                bnb_4bit_use_double_quant=True,
-                bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.bfloat16,
-            )
-            tokenizer = GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
-            model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it",quantization_config=bnb_config)
-            model.gradient_checkpointing_enable()
-            model=prepare_model_for_kbit_training(model)
-        else:
-            tokenizer =GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
-            model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it")
-        if cfg.decoder.Lora:
-            # the lora config
-            config = LoraConfig(
-                    r=cfg.decoder.lora_r,
-                    lora_alpha=cfg.decoder.lora_alpha,
-                    target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
-                    lora_dropout=cfg.decoder.lora_dropout,
-                    bias=cfg.decoder.lora_bias,
-                    task_type=cfg.decoder.lora_task_type,
+        if cfg.decoder.model_name=="gemma":
+            if cfg.decoder.quantization:
+                bnb_config = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16,
                 )
-            model=get_peft_model(
-                model,
-                peft_config=config,
-            )
-            # print the trainable parameters
-            model.print_trainable_parameters()
-            model=model.model
+                tokenizer = GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
+                model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it",quantization_config=bnb_config)
+                model.gradient_checkpointing_enable()
+                model=prepare_model_for_kbit_training(model)
+            else:
+                tokenizer =GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
+                model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it")
+            if cfg.decoder.Lora:
+                # the lora config
+                config = LoraConfig(
+                        r=cfg.decoder.lora_r,
+                        lora_alpha=cfg.decoder.lora_alpha,
+                        target_modules=["q_proj", "o_proj", "k_proj", "v_proj", "gate_proj", "up_proj", "down_proj"],
+                        lora_dropout=cfg.decoder.lora_dropout,
+                        bias=cfg.decoder.lora_bias,
+                        task_type=cfg.decoder.lora_task_type,
+                    )
+                model=get_peft_model(
+                    model,
+                    peft_config=config,
+                )
+                # print the trainable parameters
+                model.print_trainable_parameters()
+                model=model.model
+            else:
+                for name, param in model.named_parameters():
+                    param.requires_grad = False
+            self.model=VSR_LLM(tokenizer,model,cfg)
+            self.tokenizer=tokenizer
+            return self.model
         else:
-            for name, param in model.named_parameters():
-                param.requires_grad = False
-        self.model=VSR_LLM(tokenizer,model,cfg)
-        self.tokenizer=tokenizer
-        return self.model
+            model = OPTForCausalLM.from_pretrained("facebook/opt-350m", torch_dtype=torch.float16, attn_implementation="flash_attention_2")
+            tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m")
+            self.model=VSR_LLM(tokenizer,model,cfg)
+            self.tokenizer=tokenizer
+            return self.model
 
 
 class VSR_LLM(nn.Module):
@@ -127,7 +134,7 @@ class VSR_LLM(nn.Module):
         )
 
         # the projector to project the visual features to the embedding size
-        
+        self.embedding = self.model.get_input_embeddings()
         self.projector=nn.Linear(self.cfg.encoder.adim, self.cfg.decoder.embedding_size)
         # get the id of the special token id
         self.bos_token_id=self.tokenizer.bos_token_id
@@ -137,11 +144,11 @@ class VSR_LLM(nn.Module):
         # tokenizer and embedding the prompt
         prompt_token = self.tokenizer(self.prompt, add_special_tokens=False, return_tensors="pt").to(self.model.device)
         str_model_token = self.tokenizer("model\n", add_special_tokens=False, return_tensors="pt").to(self.model.device)
-        self.prompt_embed_token = self.model.model.embed_tokens(prompt_token.input_ids).to(self.model.device)
-        self.str_embed_tokens = self.model.model.embed_tokens(str_model_token.input_ids).to(self.model.device)
+        self.prompt_embed_token = self.embedding(prompt_token.input_ids).to(self.model.device)
+        self.str_embed_tokens = self.embedding(str_model_token.input_ids).to(self.model.device)
         # embed the special tokens
-        self.bos_embed_token=self.model.model.embed_tokens(torch.tensor(self.eos_token_id).to(self.model.device))
-        self.eos_embed_token=self.model.model.embed_tokens(torch.tensor(self.eos_token_id).to(self.model.device))
+        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device))
+        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device))
     
     def add_eos(self,batch):
         res = []
@@ -149,6 +156,12 @@ class VSR_LLM(nn.Module):
             t = t + "<eos>"
             res.append(t)
         return res
+    
+    def add_s(self,batch):
+        res = []
+        for t in batch:
+            t = t + "</s>"
+            res.append(t)
         
     def get_the_input_embeds(self,batch,input_lengths,targetBatch:Optional[torch.Tensor]=None):
 
@@ -164,18 +177,22 @@ class VSR_LLM(nn.Module):
         prompt_embed_tokens = self.prompt_embed_token.repeat(B,1,1)
         str_embed_tokens = self.str_embed_tokens.repeat(B,1,1)
         if targetBatch:
-            transcripts = self.add_eos(targetBatch)
+            if self.cfg.decoder.model_name=="gemma":
+                # the transcript txt + <eos>
+                transcripts = self.add_eos(targetBatch)
+            else:
+                # the transcript txt + </s>
+                transcripts = self.add_s(targetBatch)
             inputs_embeds = []
             to_regress_tokens = self.tokenizer(transcripts,return_tensors="pt",add_special_tokens=False,padding=True).to(self.model.device)
-            # the transcript txt + <eos>
-            to_regress_embed_tokens = self.model.model.embed_tokens(to_regress_tokens.input_ids)
+            to_regress_embed_tokens = self.embedding(to_regress_tokens.input_ids)
             transcript_mask = to_regress_tokens.attention_mask
             target_length = transcript_mask.sum(-1)
             # the input_embeds
             for i in range(B):
                 video = batch[i][:input_lengths[i]]
                 transcript = to_regress_embed_tokens[i][:target_length[i]]
-                inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i],to_regress_embed_tokens[i],eos_embed_tokens[i]],dim=0))
+                inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i],to_regress_embed_tokens[i]],dim=0))
             inputs_embeds = pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
             target_ids = torch.zeros(inputs_embeds.shape[0],inputs_embeds.shape[1],dtype=torch.long).fill_(-100)
             transcript_ids = to_regress_tokens.input_ids
