@@ -6,7 +6,7 @@ from torch.nn.utils.rnn import pad_sequence
 from transform import VideoTransform
 def collater(samples):
     Batch={}
-    input_lengths = torch.tensor([sample["video"].size(0) for sample in samples],dtype=torch.uint8)
+    input_lengths = torch.tensor([sample["video"].size(0) for sample in samples],dtype=torch.long)
     Batch["video"] = pad_sequence([sample["video"] for sample in samples],padding_value=0,batch_first=True)
     Batch["target"] = [sample["target"] for sample in samples]
     Batch["input_lengths"] = input_lengths
@@ -53,7 +53,7 @@ class DataModule():
             subset="test",
             video_transform=VideoTransform("test"),
         )
-        dataloader = torch.utils.data.DataLoader(dataset, batch_size=1)
+        dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,collate_fn=collater,num_workers=12)
         return dataloader
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))

@@ -3,6 +3,7 @@ defaults:
   - trainer: train
   - model: default
   - dataset: lrs2
-log_dir: /home/zzzzz/VSR_LLM_AVSR/log
-ckpt_path:
-pretrained_model_path:
+log_dir: "/home/zzzzz/VSR_LLM_AVSR/log"
+ckpt_path: "/home/zzzzz/VSR_LLM_AVSR/ckpts"
+resume_from_checkpoint: None
+pretrained_model_path:  None

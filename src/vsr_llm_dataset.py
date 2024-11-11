@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 
 class video_dataset(Dataset):
-    def __init__(self, root_dir,video_transform,labels="labels",subset="train",data_ratio=0.01):
+    def __init__(self, root_dir,video_transform,labels="labels",subset="train",data_ratio=1):
         self.root_dir = root_dir
         self.labels = os.path.join(root_dir,labels)
         self.subset = subset
@@ -38,9 +38,9 @@ class video_dataset(Dataset):
                 with open(os.path.join(self.labels,label)) as f:
                     data_list.extend(map(lambda x:(x.split(",")[1],x.split(",")[2]),f.read().splitlines()))
                 data_list.sort(key=lambda x:int(x[1]),reverse=False)
-        print(f"Found {len(data_list)} videos in {self.subset} subset")
-        if self.subset == "train":
-            print(f"Using {int(len(data_list)*self.data_ratio)} videos in {self.subset} subset to train")
+        # print(f"Found {len(data_list)} videos in {self.subset} subset")
+        # if self.subset == "train":
+            # print(f"Using {int(len(data_list)*self.data_ratio)} videos in {self.subset} subset to train")
         return data_list
 
     def __getitem__(self, idx):

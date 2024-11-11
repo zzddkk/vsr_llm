@@ -5,33 +5,27 @@ from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration
 from omegaconf import OmegaConf
 from Trainer import Trainer
-from utils import Logger ,set_seed,check_ckpt_path
+from utils import Logger ,set_seed
 from vsr_llm_datamodule import DataModule
 from vsr_llm import ModelModule
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 @hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
-def train(cfg) -> None:
+def test(cfg) -> None:
     # print(OmegaConf.to_yaml(cfg))
     # Initialize logger
     logger = Logger(cfg.log_dir)
     # Set seed
     set_seed(1337)
     # Initialize accelerator
-
-
-    project_config = ProjectConfiguration(automatic_checkpoint_naming=True,total_limit=cfg.trainer.total_limit,save_on_each_node=False,project_dir=cfg.ckpt_path)
+    project_config = ProjectConfiguration(automatic_checkpoint_naming=True,total_limit=cfg.trainer.total_limit,save_on_each_node=False)
     accelerator = Accelerator(gradient_accumulation_steps = cfg.trainer.gradient_accumulation_steps,project_config=project_config,mixed_precision=cfg.trainer.mixed_precision)
     datamodule = DataModule(cfg)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     modelmodule = ModelModule(cfg)
 
     trainer = Trainer(cfg, modelmodule, datamodule,device,logger,accelerator)
-    with accelerator.autocast():
-        trainer.train()
-    # trainer.test()
-    # alter the ckpt save path to per training to ensure the ckpt path is correct
-    path = check_ckpt_path(cfg.ckpt_path)
+    trainer.test()
 
 if __name__ == "__main__":
-    train()
+    test()

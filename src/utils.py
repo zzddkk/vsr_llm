@@ -259,3 +259,15 @@ def get_cosine_schedule_with_warmup(optimizer,cfg,num_training_steps:int):
             progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
             return 0.5 * (1.0 + math.cos(math.pi * float(0.5) * 2.0 * progress))
     return LambdaLR(optimizer, lr_lambda, -1)
+
+def check_ckpt_path(path):
+    dirname = "checkpoints"
+    last = dirname
+    for i in range(1,1000):
+        if os.path.exists(os.path.join(path,dirname)):
+            last = dirname
+            dirname = "checkpoints" + "_v" + str(i)
+            continue
+        else:
+            os.rename(os.path.join(path,last),os.path.join(path,dirname))
+            return os.path.join(path,dirname)

@@ -27,10 +27,10 @@ class ModelModule():
             return outputs.loss
         if mode == "test":
             outputs = self.model.generate(batch["video"],batch["input_lengths"])   
-            return outputs   
+            return outputs  
         if mode == "val":
             outputs = self.model(batch["video"],batch["target"],batch["input_lengths"])
-            return outputs
+            return outputs.loss
 
     def training_step(self,batch):
         return self._step(batch,"train")
@@ -48,13 +48,13 @@ class ModelModule():
         """
         cfg=cfg.model
         # quantization or not
-        # a little tips: the bnb_4bit_compute_dtype set torch.bfloat16 the output will imporve obviously
+        # the bnb_4bit_compute_dtype set torch.bfloat16/troch.float32 the output will imporve obviously
         if cfg.decoder.quantization:
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_use_double_quant=True,
                 bnb_4bit_quant_type="nf4",
-                bnb_4bit_compute_dtype=torch.float32,
+                bnb_4bit_compute_dtype=torch.bfloat16,
             )
             tokenizer = GemmaTokenizer.from_pretrained("google/gemma-1.1-2b-it")
             model = GemmaForCausalLM.from_pretrained("google/gemma-1.1-2b-it",quantization_config=bnb_config)
@@ -100,16 +100,14 @@ class VSR_LLM(nn.Module):
     Output: Log probabilities over the character set at each time step.
     """
     def __init__(self,tokenizer,model,cfg):
-        # the input need dModel, nHeads, numLayers, peMaxLen, fcHiddenSize, dropout, numClasses,embedding_size=2048,quantization=True,Lora=True
         super(VSR_LLM, self).__init__()
-        # some necessary parameters
         self.cfg=cfg
         self.tokenizer=tokenizer
         self.tokenizer.padding_side="right"
         self.tokenizer.add_tokens(["STT"])
         self.model=model
         self.prompt=cfg.decoder.prompt
-        # the visual encoder layers: transformer encoder
+        # the visual encoder layers: 3D + resnet + comformer encoder
         self.encoder = Encoder(
             attention_dim=cfg.encoder.adim,
             attention_heads=cfg.encoder.aheads,
@@ -128,13 +126,9 @@ class VSR_LLM(nn.Module):
             relu_type=getattr(cfg.encoder, "relu_type", "swish"),
         )
 
-        # freeze and load the pretrain model
+        # the projector to project the visual features to the embedding size
         
-        self.projector=nn.Sequential(
-                        nn.Linear(self.cfg.encoder.adim, self.cfg.decoder.embedding_size),
-                        nn.GELU(),
-                        nn.Linear(self.cfg.decoder.embedding_size,self.cfg.decoder.embedding_size),
-                    )
+        self.projector=nn.Linear(self.cfg.encoder.adim, self.cfg.decoder.embedding_size)
         # get the id of the special token id
         self.bos_token_id=self.tokenizer.bos_token_id
         self.eos_token_id=self.tokenizer.eos_token_id
@@ -207,14 +201,38 @@ class VSR_LLM(nn.Module):
         the format of the input is as follows:
         <bos><start_of_turn>user
         You are a helpful AI assistant for recognizing the input speech in English.Input<end_of_turn>
-        <start_of_turn>model
+        <start_of_turn>model 
+
+        OR:
+        <bos>user
+        You are a helpful AI assistant for recognizing the input speech in English.Input<end_of_turn>
+        model
 
         the format of the targets is as follows:
         [-100]*len(input_embeds[1]-to_regress_embeds.shape[1])+[target_ids]
+        we will use -100 to fill the part of prompt and video features beacuse we do not need to calculate the loss of them
+        ans crossentropy loss will ignore the -100
         """
+        inputBatch = inputBatch.to(self.model.device)
         padding_mask = make_non_pad_mask(input_lengths).to(inputBatch.device).unsqueeze(-2)
         batch,_ = self.encoder(inputBatch,padding_mask)
         batch = self.projector(batch)
+        """
+        From the huggingface transformers library:
+        model predict the next token
+        if labels is not None:
+        use the provided labels as the next token to supervise the model
+            logits = self.lm_head(hidden_states[:, -num_logits_to_keep:, :]).float()
+            loss = None
+            if labels is not None:
+                # Upcast to float if we need to compute the loss to avoid potential precision issues
+                logits = logits.float()
+                # Shift so that tokens < n predict n
+                shift_logits = logits[..., :-1, :].contiguous()
+                shift_labels = labels[..., 1:].contiguous()
+                # Flatten the tokens
+                loss_fct = CrossEntropyLoss()
+        """
         inputs_embeds,target_ids = self.get_the_input_embeds(batch,input_lengths,targetBatch)
         outputs = self.model(
             inputs_embeds=inputs_embeds,
@@ -226,30 +244,34 @@ class VSR_LLM(nn.Module):
 
 
     @torch.no_grad()
-    def generate(self,inputBatch,input_length):
+    def generate(self,inputBatch,input_lengths):
 
         """
-        the function will generate the text logits
+        the function will generate the text logits if set output_logits=True
         """
-        padding_mask = make_non_pad_mask(input_lengths).to(inputBatch.device).unsqueeze(-2)
+        inputBatch = inputBatch.to(self.model.device)
+        padding_mask = make_non_pad_mask(input_lengths).unsqueeze(-2)
         batch , _ = self.encoder(inputBatch,padding_mask)
         batch = self.projector(batch)
-        inputs_embeds=self.get_the_input_embeds(batch,input_length,None)    
+        inputs_embeds=self.get_the_input_embeds(batch,input_lengths,None)    
         outputs = self.model.generate(
             inputs_embeds=inputs_embeds,
-            top_p=0.9,
-            repetition_penalty=1.0,
-            length_penalty=1.0,
-            num_beams=1,
+            top_p=self.cfg.decoder.top_p,
+            repetition_penalty=self.cfg.decoder.repetition_penalty,
+            length_penalty=self.cfg.decoder.length_penalty,
+            num_beams=self.cfg.decoder.num_beams,
             return_dict_in_generate=True,
-            output_logits=True,
-            max_new_tokens=200,
+            # output_logits=True,
+            max_new_tokens=self.cfg.decoder.max_new_tokens,
         )
         return outputs
 
 parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 @hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
 def test(cfg):
+    """
+    test function
+    """
     modelmodule = ModelModule(cfg)
     model = modelmodule.build_model(cfg)
     model = model.to("cuda")

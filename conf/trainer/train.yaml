@@ -1,5 +1,7 @@
-optimizer: 1
-epochs: 20
+mixed_precision: "fp16"
+epochs: 1
+total_limit: 10
 gradient_accumulation_steps: 16
 lr: 0.0001
 weight_decay: 0.0001
+clip_value: 5.0
