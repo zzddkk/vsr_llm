@@ -21,3 +21,4 @@ transformer_length_normalized_loss: False
 mtlalpha: 0.1
 ctc_type: builtin
 rel_pos_type: latest
+encoder_pretrained : "None"

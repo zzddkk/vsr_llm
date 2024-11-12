@@ -60,7 +60,7 @@ class Trainer:
                 loss = self.modelmodule.training_step(batch)
                 if step % self.cfg.trainer.gradient_accumulation_steps == 0:
                     self.logger.add_scalar("loss/train",loss.item())
-                self.accelerator.backward(loss,retain_graph= True)
+                self.accelerator.backward(loss)
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_value_(self.model.parameters(), self.cfg.trainer.clip_value)
                 self.optimizer.step()

@@ -13,6 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 # from huggingface_hub import login
 # # login()
 from espnet.nets.pytorch_backend.transformer.encoder import Encoder
+from espnet.nets.pytorch_backend.ctc import CTC
 from utils import make_non_pad_mask
 from transformers import GemmaForCausalLM,GemmaTokenizer,BitsAndBytesConfig,OPTForCausalLM, GPT2Tokenizer
 from peft import LoraConfig,get_peft_model,prepare_model_for_kbit_training
@@ -147,6 +148,21 @@ class VSR_LLM(nn.Module):
             relu_type=getattr(cfg.encoder, "relu_type", "swish"),
         )
 
+        if cfg.encoder.encoder_pretrained!="None":
+            state_dict = torch.load(cfg.decoder.encoder_pretrained,weights_only=True,map_location="cpu")
+            for name, param in state_dict.items():
+                try :
+                    if name.split("encoder.frontend.")[1] in self.encoder.state_dict():
+                        self.encoder.state_dict()[name.split("encoder.frontend.")[1]].copy_(param)
+                        print(f"the frontend param {name} is loaded")
+                except Exception as e:
+                    print(e)
+                    print(f"the frontend param {name} is not loaded")
+        
+        # self.ctc = CTC(
+        #         ???, self.cfg.encoder.adim, self.cfg.encoder.dropout_rate, ctc_type=self.cfg.encoder.ctc_type, reduce=True
+        #     )
+
         # the projector to project the visual features to the embedding size
         self.embedding = self.model.get_input_embeddings()
         self.projector=nn.Linear(self.cfg.encoder.adim, self.cfg.decoder.embedding_size)
@@ -158,11 +174,11 @@ class VSR_LLM(nn.Module):
         # tokenizer and embedding the prompt
         prompt_token = self.tokenizer(self.prompt, add_special_tokens=False, return_tensors="pt").to(self.model.device)
         str_model_token = self.tokenizer("model\n", add_special_tokens=False, return_tensors="pt").to(self.model.device)
-        self.prompt_embed_token = self.embedding(prompt_token.input_ids).to(self.model.device)
-        self.str_embed_tokens = self.embedding(str_model_token.input_ids).to(self.model.device)
+        self.prompt_embed_token = self.embedding(prompt_token.input_ids)
+        self.str_embed_tokens = self.embedding(str_model_token.input_ids)
         # embed the special tokens
-        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device)).to(self.model.device)
-        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id).to(self.model.device)).to(self.model.device)
+        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id))
+        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id))
     
     def add_eos(self,batch):
         res = []
@@ -208,19 +224,22 @@ class VSR_LLM(nn.Module):
                 video = batch[i][:input_lengths[i]].to(self.model.device)
                 transcript = to_regress_embed_tokens[i][:target_length[i]]
                 inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i],transcript],dim=0))
-            inputs_embeds = pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
-            target_ids = torch.zeros(inputs_embeds.shape[0],inputs_embeds.shape[1],dtype=torch.long).fill_(-100)
+            inputs= pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
+            target_ids = []
             transcript_ids = to_regress_tokens.input_ids
+            
             for i in range(B):
-                target_ids[i][-target_length[i]:] = transcript_ids[i][:target_length[i]]
-            return inputs_embeds,target_ids
+                empty = torch.zeros(inputs[i].shape[0]-target_length[i],dtype=torch.long).fill_(-100).to(self.model.device)
+                target_ids.append(torch.cat([empty,transcript_ids[i][:target_length[i]]],dim=0))
+            labels = torch.stack(target_ids,dim=0).to(torch.long)
+            return inputs,labels
         else:
             inputs_embeds = []
             for i in range(B):
                 video = batch[i][:input_lengths[i]]
                 inputs_embeds.append(torch.cat([bos_embed_tokens[i],prompt_embed_tokens[i],video,str_embed_tokens[i]],dim=0))
-            inputs_embeds = pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
-            return inputs_embeds
+            inputs = pad_sequence(inputs_embeds,batch_first=True,padding_value=0,padding_side="left")
+            return inputs
                     
 
     def forward(self, inputBatch,targetBatch,input_lengths):

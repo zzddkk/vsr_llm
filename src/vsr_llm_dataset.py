@@ -46,4 +46,3 @@ class video_dataset(Dataset):
     def __getitem__(self, idx):
         data = self.load_data(idx)
         return data
-    
