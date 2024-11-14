@@ -3,6 +3,7 @@ import sys
 import time
 import os
 import math
+from omegaconf import OmegaConf
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.tensorboard import SummaryWriter
 def set_seed(seed):
@@ -224,6 +225,7 @@ def make_non_pad_mask(lengths, xs=None, length_dim=-1):
 class Logger():
     def __init__(self, log_file):
         time_dir = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
+        self.time_dir = time_dir
         tensorboard_dir = os.path.join(log_file, time_dir,"tensorboard")
         os.makedirs(tensorboard_dir,exist_ok=True)
         txt_dir = os.path.join(log_file, time_dir)
@@ -242,6 +244,11 @@ class Logger():
     def flush(self):
         self.terminal.flush()
         self.log.flush()
+
+    def save_parmas(self,path,cfg):
+        with open(os.path.join(path,"params.yaml"),"w") as f:
+            f.write(f"Time: {self.time_dir}\n")
+            f.write(OmegaConf.to_yaml(cfg))
 
     def close(self):
         self.log.close()
@@ -262,12 +269,10 @@ def get_cosine_schedule_with_warmup(optimizer,cfg,num_training_steps:int):
 
 def check_ckpt_path(path):
     dirname = "checkpoints"
-    last = dirname
     for i in range(1,1000):
         if os.path.exists(os.path.join(path,dirname)):
-            last = dirname
             dirname = "checkpoints" + "_v" + str(i)
             continue
         else:
-            os.rename(os.path.join(path,last),os.path.join(path,dirname))
+            os.rename(os.path.join(path,"checkpoints"),os.path.join(path,dirname))
             return os.path.join(path,dirname)

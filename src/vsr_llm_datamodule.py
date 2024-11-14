@@ -50,7 +50,7 @@ class DataModule():
             subset="val",
             video_transform=VideoTransform("val"),
         )
-        sampler = ByFrameCountSampler(val_ds, self.cfg.dataset.max_frames,shuffle=False)
+        sampler = ByFrameCountSampler(val_ds, self.cfg.dataset.max_val_frames,shuffle=False)
         return self._dataloader(val_ds, sampler , collater)
 
     def test_dataloader(self):
@@ -63,14 +63,14 @@ class DataModule():
         dataloader = torch.utils.data.DataLoader(dataset, batch_size=1,collate_fn=collater,num_workers=12)
         return dataloader
 
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-@hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
-def test(cfg):
-    from transform import VideoTransform
-    datamodel = DataModule(cfg)
-    val_dataloader = datamodel.val_dataloader()
-    for batch in val_dataloader:
-        print(batch["video"].shape)
-        break
-if __name__ == "__main__":
-    test()
+# parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# @hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
+# def test(cfg):
+#     from transform import VideoTransform
+#     datamodel = DataModule(cfg)
+#     val_dataloader = datamodel.val_dataloader()
+#     for batch in val_dataloader:
+#         print(batch["video"].shape)
+#         break
+# if __name__ == "__main__":
+#     test()

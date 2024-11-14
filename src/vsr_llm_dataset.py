@@ -7,7 +7,7 @@ from torch.utils.data import Dataset
 
 
 class video_dataset(Dataset):
-    def __init__(self, root_dir,video_transform,labels="labels",subset="train",data_ratio=1):
+    def __init__(self, root_dir,video_transform,labels="labels",subset="train",data_ratio=0.1):
         self.root_dir = root_dir
         self.labels = os.path.join(root_dir,labels)
         self.subset = subset

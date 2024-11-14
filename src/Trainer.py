@@ -39,18 +39,16 @@ class Trainer:
         for epoch in range(self.cfg.trainer.epochs):
             self.epoch = epoch
             self._inner_training_loop()
-            self.accelerator.save_state()
+            self.accelerator.save_state(safe_serialization=False)
             self._inner_validation_loop()
         # self._inner_test_loop()
-        self.accelerator.save_model(self.model,self.cfg.ckpt_path)
-        self.logger.close()
+        self.accelerator.save_model(self.model,self.cfg.ckpt_path,safe_serialization=False)
 
     def test(self):
         self.model.load_state_dict(torch.load(self.cfg.ckpt_path)["model"],strict=False)
         self.test_dataloader = self.datamodule.test_dataloader()
         self.model,self.test_dataloader = self.accelerator.prepare(self.model,self.test_dataloader)
         self._inner_test_loop()
-        self.logger.close()
     
     # inner training loop
     def _inner_training_loop(self):
@@ -61,7 +59,8 @@ class Trainer:
             with self.accelerator.accumulate():
                 loss = self.modelmodule.training_step(batch)
                 if step % self.cfg.trainer.gradient_accumulation_steps == 0:
-                    self.logger.add_scalar("loss/train",loss.item())
+                    if self.accelerator.is_main_process:
+                        self.logger.add_scalar("loss/train",loss.item())
                 self.accelerator.backward(loss)
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_value_(self.model.parameters(), self.cfg.trainer.clip_value)
@@ -80,7 +79,8 @@ class Trainer:
             loss = self.modelmodule.val_step(batch)
             loss_record.append(loss.item())
             pbar.set_postfix({"loss":loss.item()})
-        self.logger.add_scalar("loss/val",sum(loss_record)/len(loss_record))
+        if self.accelerator.is_main_process:
+            self.logger.add_scalar("loss/val",sum(loss_record)/len(loss_record))
     
     # test loop
     def _inner_test_loop(self):

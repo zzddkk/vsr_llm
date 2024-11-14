@@ -9,4 +9,5 @@ av==13.1.0
 sentencepiece==0.2.0
 torcheval==0.0.7
 tensorboard==2.18.0 
+tensorboardX==2.6.2.2
 accelerate==1.1.1

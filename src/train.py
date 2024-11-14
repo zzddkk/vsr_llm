@@ -1,6 +1,7 @@
 import hydra
 import os
 import torch
+import shutil
 from accelerate import Accelerator
 from accelerate.utils import ProjectConfiguration
 from omegaconf import OmegaConf
@@ -33,6 +34,8 @@ def train(cfg) -> None:
     # trainer.test()
     # alter the ckpt save path to per training to ensure the ckpt path is correct
     path = check_ckpt_path(cfg.ckpt_path)
-
+    logger.save_parmas(path,cfg)
+    shutil.move(os.path.join(cfg.ckpt_path,"pytorch_model.bin"),os.path.join(path,"pytorch_model.bin"))
+    logger.close()
 if __name__ == "__main__":
     train()

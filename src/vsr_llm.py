@@ -97,12 +97,12 @@ class ModelModule():
                     bnb_4bit_compute_dtype=torch.bfloat16,
                 )
                 model = OPTForCausalLM.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir,quantization_config=bnb_config)
-                tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir)
+                tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir,clean_up_tokenization_spaces=False)
                 model.gradient_checkpointing_enable()
                 model=prepare_model_for_kbit_training(model)
             else:
                 model = OPTForCausalLM.from_pretrained("facebook/opt-350m", cache_dir=cfg.decoder.cache_dir).to(device)
-                tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir)
+                tokenizer = GPT2Tokenizer.from_pretrained("facebook/opt-350m",cache_dir=cfg.decoder.cache_dir,clean_up_tokenization_spaces=False)
             for name, param in model.named_parameters():
                 param.requires_grad = False
             self.model=VSR_LLM(tokenizer,model,cfg)
@@ -149,11 +149,11 @@ class VSR_LLM(nn.Module):
         )
 
         if cfg.encoder.encoder_pretrained!="None":
-            state_dict = torch.load(cfg.decoder.encoder_pretrained,weights_only=True,map_location="cpu")
+            state_dict = torch.load(cfg.encoder.encoder_pretrained,weights_only=True,map_location="cpu")
             for name, param in state_dict.items():
                 try :
-                    if name.split("encoder.frontend.")[1] in self.encoder.state_dict():
-                        self.encoder.state_dict()[name.split("encoder.frontend.")[1]].copy_(param)
+                    if name.split("encoder.")[1] in self.encoder.state_dict():
+                        self.encoder.state_dict()[name.split("encoder.")[1]].copy_(param)
                         print(f"the frontend param {name} is loaded")
                 except Exception as e:
                     print(e)
@@ -317,31 +317,31 @@ class VSR_LLM(nn.Module):
         )
         return outputs
 
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-@hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
-def test(cfg):
-    """
-    test function
-    """
-    modelmodule = ModelModule(cfg)
-    model = modelmodule.build_model(cfg)
-    model = model.to("cuda")
-    from transform import VideoTransform
-    from vsr_llm_datamodule import DataModule
-    datamodel = DataModule(cfg)
-    val_dataloader = datamodel.val_dataloader(batch_size=1)
-    for batch in val_dataloader:
-        inputBatch=batch["video"]
-        targetBatch=batch["target"]
-        input_lengths=batch["input_lengths"]
-        inputBatch = inputBatch.to("cuda")
-        input_lengths = input_lengths.to("cuda")
-        outputs = model(inputBatch,targetBatch,input_lengths)
-        for k in outputs.keys():
-            print(k)
-        break
-    # for n,p in model.named_parameters():
-    #     print(n,p.requires_grad)
-    # print(model)
-if __name__ == "__main__":
-    test()
+# parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+# @hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
+# def test(cfg):
+#     """
+#     test function
+#     """
+#     modelmodule = ModelModule(cfg)
+#     model = modelmodule.build_model(cfg)
+#     model = model.to("cuda")
+#     from transform import VideoTransform
+#     from vsr_llm_datamodule import DataModule
+#     datamodel = DataModule(cfg)
+#     val_dataloader = datamodel.val_dataloader(batch_size=1)
+#     for batch in val_dataloader:
+#         inputBatch=batch["video"]
+#         targetBatch=batch["target"]
+#         input_lengths=batch["input_lengths"]
+#         inputBatch = inputBatch.to("cuda")
+#         input_lengths = input_lengths.to("cuda")
+#         outputs = model(inputBatch,targetBatch,input_lengths)
+#         for k in outputs.keys():
+#             print(k)
+#         break
+#     # for n,p in model.named_parameters():
+#     #     print(n,p.requires_grad)
+#     # print(model)
+# if __name__ == "__main__":
+#     test()

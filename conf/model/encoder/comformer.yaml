@@ -21,4 +21,4 @@ transformer_length_normalized_loss: False
 mtlalpha: 0.1
 ctc_type: builtin
 rel_pos_type: latest
-encoder_pretrained : "None"
+encoder_pretrained : "/home/zzzzz/VSR_LLM_AVSR/ckpts/auto_avsr/vsr_trlrwlrs2lrs3vox2avsp_base.pth"
