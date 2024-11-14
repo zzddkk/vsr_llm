@@ -3,6 +3,8 @@
 conda create -n vsr_llm python=3.10.12 -y
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 conda install ffmpeg==7.1.0
+python -m pip install --upgrade pip==23.2 (24.3.1)
+pip install hydra-core --upgrade (it will occur error but ignore)
 ```
 
 ## [preparation](https://github.com/mpc001/auto_avsr/tree/main/preparation)

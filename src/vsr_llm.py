@@ -177,8 +177,8 @@ class VSR_LLM(nn.Module):
         self.prompt_embed_token = self.embedding(prompt_token.input_ids)
         self.str_embed_tokens = self.embedding(str_model_token.input_ids)
         # embed the special tokens
-        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id))
-        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id))
+        self.bos_embed_token=self.embedding(torch.tensor(self.eos_token_id,device=self.model.device))
+        self.eos_embed_token=self.embedding(torch.tensor(self.eos_token_id,device=self.model.device))
     
     def add_eos(self,batch):
         res = []

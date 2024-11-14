@@ -1,7 +1,7 @@
 import accelerate
 import torch
 from tqdm import tqdm
-from accelerate.utils import find_executable_batch_size
+# from accelerate.utils import find_executable_batch_size
 from torcheval.metrics import WordErrorRate
 from utils import get_cosine_schedule_with_warmup,check_ckpt_path
 class Trainer:
@@ -9,6 +9,8 @@ class Trainer:
         self.cfg = cfg
         self.modelmodule = modelmodule
         self.model = self.modelmodule.build_model(cfg,device)
+        for name, param in self.model.named_parameters():
+            accelerator.print(name, param.requires_grad)
         self.optimizer = torch.optim.AdamW([{"name": "model", "params": self.model.parameters(), "lr": self.cfg.trainer.lr}], weight_decay=self.cfg.trainer.weight_decay, betas=(0.9, 0.98))
         self.device = device
         self.datamodule = datamodule
@@ -17,12 +19,12 @@ class Trainer:
         self.logger = logger
 
     # This decorator will find the maximum batch size that can be used for training
-    @find_executable_batch_size(starting_batch_size=2)
-    def train(batch_size,self):
-        self.train_dataloader = self.datamodule.train_dataloader(batch_size)
+    # @find_executable_batch_size(starting_batch_size=2)
+    def train(self):
+        self.train_dataloader = self.datamodule.train_dataloader()
         # Train batch size:
-        self.accelerator.print(f"Train batch size: {batch_size* self.accelerator.num_processes*self.cfg.trainer.gradient_accumulation_steps}")
-        self.val_dataloader = self.datamodule.val_dataloader(batch_size)
+        # self.accelerator.print(f"Train batch size: {batch_size* self.accelerator.num_processes*self.cfg.trainer.gradient_accumulation_steps}")
+        self.val_dataloader = self.datamodule.val_dataloader()
         self.test_dataloader = self.datamodule.test_dataloader()
         self.scheduler = get_cosine_schedule_with_warmup(self.optimizer, self.cfg, int(len(self.train_dataloader) * self.cfg.trainer.epochs / self.cfg.trainer.gradient_accumulation_steps))
         """

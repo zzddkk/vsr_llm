@@ -12,17 +12,17 @@ class video_dataset(Dataset):
         self.labels = os.path.join(root_dir,labels)
         self.subset = subset
         self.data_ratio = data_ratio
-        self.data_list = self.load_list()
+        self.list = self.load_list()
         if subset == "train":
-            self.data_list = self.data_list[:int(len(self.data_list)*data_ratio)]
-        self.data_list.reverse()
+            self.list = self.list[:int(len(self.list)*data_ratio)]
+        self.list.reverse()
         self.video_transform = video_transform
 
     def __len__(self):
-        return len(self.data_list)
+        return len(self.list)
     
     def load_data(self,index):
-        path = self.data_list[index][0]
+        path = self.list[index][1]
         with open(os.path.join(self.root_dir,"lrs2",path.replace(".mp4",".txt")).replace("video","text")) as f:
             target = f.read().splitlines()[0]
         video = torchvision.io.read_video(os.path.join(self.root_dir,"lrs2",path),pts_unit="sec",output_format="THWC")[0]
@@ -36,8 +36,8 @@ class video_dataset(Dataset):
         for label in labels_path:
             if self.subset in label:
                 with open(os.path.join(self.labels,label)) as f:
-                    data_list.extend(map(lambda x:(x.split(",")[1],x.split(",")[2]),f.read().splitlines()))
-                data_list.sort(key=lambda x:int(x[1]),reverse=False)
+                    data_list.extend(map(lambda x:(x.split(",")[0],x.split(",")[1],int(x.split(",")[2]),torch.tensor([int(_) for _ in x.split(",")[3].split()])),f.read().splitlines()))
+                data_list.sort(key=lambda x:x[2],reverse=False)
         # print(f"Found {len(data_list)} videos in {self.subset} subset")
         # if self.subset == "train":
             # print(f"Using {int(len(data_list)*self.data_ratio)} videos in {self.subset} subset to train")

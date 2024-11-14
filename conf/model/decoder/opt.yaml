@@ -1,5 +1,5 @@
 model_name: "opt"
-quantization: True
+quantization: False
 cache_dir: "/home/zzzzz/.cache/huggingface/hub/models--facebook--opt-350m"
 embedding_size: 512
 prompt: "user\nYou are a helpful AI assistant for recognizing the input video in English.Input:"

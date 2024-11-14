@@ -1,1 +1,2 @@
 root_dir: /home/zzzzz/VSR_LLM_AVSR/data/LRS2_preprocess
+max_frames: 1200
