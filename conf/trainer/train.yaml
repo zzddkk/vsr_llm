@@ -1,5 +1,5 @@
 mixed_precision: "fp16"
-epochs: 1
+epochs: 20
 total_limit: 10
 gradient_accumulation_steps: 16
 lr: 0.0001

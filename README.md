@@ -11,4 +11,4 @@ pip install hydra-core --upgrade (it will occur error but ignore)
 process the dataset from auto_avsr
 
 ## Note 
-1. The cfg.dataset.max_frams is for total_gpus not only for one per 4090 I suggest the value is 600~800
+1. The cfg.dataset.max_frams is for total_gpus not only for one per 4090 I suggest the value is 600

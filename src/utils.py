@@ -3,6 +3,7 @@ import sys
 import time
 import os
 import math
+import shutil
 from omegaconf import OmegaConf
 from torch.optim.lr_scheduler import LambdaLR
 from torch.utils.tensorboard import SummaryWriter
@@ -223,36 +224,47 @@ def make_non_pad_mask(lengths, xs=None, length_dim=-1):
 
 
 class Logger():
-    def __init__(self, log_file):
+    def __init__(self, log_file,mode):
+        self.mode = mode
         time_dir = time.strftime("%Y-%m-%d-%H-%M-%S", time.localtime())
         self.time_dir = time_dir
         tensorboard_dir = os.path.join(log_file, time_dir,"tensorboard")
         os.makedirs(tensorboard_dir,exist_ok=True)
         txt_dir = os.path.join(log_file, time_dir)
+        self.txt_dir = txt_dir
         os.makedirs(txt_dir,exist_ok=True)
         self.terminal = sys.stdout
-        self.log = open(os.path.join(txt_dir,"log.txt"), "a")
-        self.tensorboard = SummaryWriter(tensorboard_dir)
+        self.mode = mode
+        if mode == "eval":
+            self.log = open(os.path.join(txt_dir,"log.txt"), "a")
+        else:
+            self.tensorboard = SummaryWriter(tensorboard_dir)
 
     def write(self, message):
-        self.terminal.write(message)
+        # self.terminal.write(message)
         self.log.write(message)
 
     def add_scalar(self, tag, scalar_value, global_step=None, walltime=None):
         self.tensorboard.add_scalar(tag, scalar_value, global_step, walltime)
 
     def flush(self):
-        self.terminal.flush()
-        self.log.flush()
+        # self.terminal.flush()
+        # self.log.flush()
+        pass
 
     def save_parmas(self,path,cfg):
         with open(os.path.join(path,"params.yaml"),"w") as f:
             f.write(f"Time: {self.time_dir}\n")
             f.write(OmegaConf.to_yaml(cfg))
 
+    def move_log(self,log_name,path):
+        shutil.move(os.path.join(path,log_name),os.path.join(self.txt_dir,log_name))
+
     def close(self):
-        self.log.close()
-        self.tensorboard.close()
+        if self.mode == "eval":
+            self.log.close()
+        else:
+            self.tensorboard.close()
 
 def get_cosine_schedule_with_warmup(optimizer,cfg,num_training_steps:int):
     """

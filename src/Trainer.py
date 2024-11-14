@@ -40,7 +40,7 @@ class Trainer:
             self.epoch = epoch
             self._inner_training_loop()
             self.accelerator.save_state(safe_serialization=False)
-            self._inner_validation_loop()
+            self._inner_validation_loop(epoch)
         # self._inner_test_loop()
         self.accelerator.save_model(self.model,self.cfg.ckpt_path,safe_serialization=False)
 
@@ -60,7 +60,8 @@ class Trainer:
                 loss = self.modelmodule.training_step(batch)
                 if step % self.cfg.trainer.gradient_accumulation_steps == 0:
                     if self.accelerator.is_main_process:
-                        self.logger.add_scalar("loss/train",loss.item())
+                        self.logger.add_scalar("loss/train",loss.item(),int(step/self.cfg.trainer.gradient_accumulation_steps))
+                        self.logger.add_scalar("lr",self.optimizer.param_groups[-1]['lr'],int(step/self.cfg.trainer.gradient_accumulation_steps))
                 self.accelerator.backward(loss)
                 if self.accelerator.sync_gradients:
                     self.accelerator.clip_grad_value_(self.model.parameters(), self.cfg.trainer.clip_value)
@@ -71,7 +72,7 @@ class Trainer:
             pbar.set_postfix({"loss":loss.item()})
 
     # inner validation loop
-    def _inner_validation_loop(self):
+    def _inner_validation_loop(self,epoch):
         self.model.eval()
         pbar = tqdm(self.val_dataloader, desc="Validation", position=0, leave=True)
         loss_record = []
@@ -80,7 +81,7 @@ class Trainer:
             loss_record.append(loss.item())
             pbar.set_postfix({"loss":loss.item()})
         if self.accelerator.is_main_process:
-            self.logger.add_scalar("loss/val",sum(loss_record)/len(loss_record))
+            self.logger.add_scalar("loss/val",sum(loss_record)/len(loss_record),epoch)
     
     # test loop
     def _inner_test_loop(self):

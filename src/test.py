@@ -13,8 +13,6 @@ parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
 @hydra.main(config_path=os.path.join(parent_dir,"conf"), config_name="configs")
 def test(cfg) -> None:
     # print(OmegaConf.to_yaml(cfg))
-    # Initialize logger
-    logger = Logger(cfg.log_dir)
     # Set seed
     set_seed(1337)
     # Initialize accelerator
@@ -23,9 +21,17 @@ def test(cfg) -> None:
     datamodule = DataModule(cfg)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     modelmodule = ModelModule(cfg)
+    # Initialize logger
+    if accelerator.is_main_process:
+        logger = Logger(cfg.log_dir,"eval")
+    else:
+        logger = None
 
     trainer = Trainer(cfg, modelmodule, datamodule,device,logger,accelerator)
     trainer.test()
+    if accelerator.is_main_process:
+        logger.move_log("eval.log",parent_dir)
+        logger.close()
 
 if __name__ == "__main__":
     test()
